@@ -2,7 +2,7 @@
  * @file      LightDetector.cpp
  * @author    zhangmin(3273749257@qq.com)
  * @brief     灯柱检测并配对
- * @version   0.3
+ * @version   0.4
  * @date      2022-04-27
  * @copyright Copyright (c) 2022
  */
@@ -76,6 +76,28 @@ filter_type filter(filter_type effective_value, filter_type new_value, filter_ty
     }
 }
 
+
+/**
+ * 函数名：  lightDetector
+ * 参数：   Mat img，要展示的图像
+ *         string 窗口名
+ * 返回值： 无
+ * 功能：   在指定窗口展示照片
+ */
+
+void img_show(Mat img, string windowName)
+{
+    // [1] 新建一个窗口
+    namedWindow(windowName, WINDOW_NORMAL);
+    // [2] 调整窗口大小
+    resizeWindow(windowName, Size(img.cols / 2, img.rows / 2));
+    // [3] 展示照片
+    imshow(windowName, img);
+
+    return;
+}
+
+
 /**
  * 函数名：  pretreat
  * 参数：   Mat src，要处理的图像
@@ -85,7 +107,7 @@ filter_type filter(filter_type effective_value, filter_type new_value, filter_ty
  * 思路：
  * 1. 先将图像转为灰度图，对灰度图进行二值化找出亮度较高的区域1
  * 2. 再通过对原图通道相减并二值化得到包含目标颜色的区域2
- * 3. 将区域1和区域2进行相与操作并通过形态学操作得到灯柱候选区域。
+ * 3. 将区域1和区域2进行相与操作并通过形态学操作得到灯柱候选区域
  */
 
 Mat pretreat(Mat src)
@@ -93,9 +115,11 @@ Mat pretreat(Mat src)
     // [1-1] 得到灰度图
     Mat grey;
     cvtColor(src, grey, COLOR_BGR2GRAY);
+    img_show(grey,"2-灰度图");
     Mat bigrey;
     // [1-2] 对灰度图进行二值化处理
     threshold(grey, bigrey, 150, 255, THRESH_BINARY);
+    img_show(bigrey,"3-二值图");
 
     // [2-1] 将原图通道分离
     Mat channel[3];
@@ -103,11 +127,13 @@ Mat pretreat(Mat src)
     Mat src_blue; // 存储B通道
     // [2-2] 通道相减得到蓝色通道（装甲板灯条为蓝色），得到单通道图
     subtract(channel[0], channel[2], src_blue);
+    img_show(src_blue,"4-提取蓝色");
     // [2-3] 对得到的蓝色通道进行二值化处理
     threshold(src_blue, src_blue, 110, 255, THRESH_BINARY);
     // [2-4] 对得到的蓝色通道进行膨胀处理
     Mat element1 = getStructuringElement(MORPH_RECT, Size(3, 3)); //创建一个用于膨胀的图形
     dilate(src_blue, src_blue, element1);
+    img_show(src_blue,"5-blue-二值化图&膨胀处理");
 
     // [3-1] 用原图蓝色通道二值之后的图片与（&）上原图通道相减二值膨胀之后的图片，提取出较为可信的候选区域
     Mat dst;
@@ -115,8 +141,10 @@ Mat pretreat(Mat src)
     // [3-2] 对dst进行膨胀处理
     Mat element2 = getStructuringElement(MORPH_RECT, Size(2, 2));
     dilate(dst, dst, element2);
+    img_show(dst,"6-预处理完成");
     return dst;
 }
+
 
 /**
  * 函数名：  lightDetector
@@ -129,7 +157,7 @@ Mat pretreat(Mat src)
  * 1. 寻找轮廓
  * 2. 寻找灯柱
  * 3. 灯柱配对
- * 4. 画标记
+ * 4. 画标记并输出坐标
  */
 
 void lightDetector(Mat src,Mat treat_img)
@@ -223,9 +251,19 @@ void lightDetector(Mat src,Mat treat_img)
             ARMOR.center.x = filter(ARMOR.center.x,xmidnum, DELAT_MAX);
             ARMOR.center.y = filter(ARMOR.center.y,ymidnum, DELAT_MAX);
             // [5-4] 绘制
-            Scalar color(rand() & 255, rand() & 255, rand() & 255);//随机颜色拟合线
-            rectangle(src, point1,point2, color, 2);//将装甲板框起来
-            circle(src,ARMOR.center,10,color);//在装甲板中心画一个圆
+//            Scalar color(rand() & 255, rand() & 255, rand() & 255);//随机颜色拟合线
+            rectangle(src, point1,point2, Scalar(0, 255, 0), 2);//将装甲板框起来
+            circle(src,ARMOR.center,10,Scalar(0, 255, 0));//在装甲板中心画一个圆
+
+            // [6] 输出坐标
+            string center_x=to_string(ARMOR.center.x);
+            string center_y=to_string(ARMOR.center.y);
+            string text="("+center_x+","+center_y+")";//坐标
+            Point point;//文字位置
+            point.x=src.cols/2;
+            point.y=src.rows/2;
+            Scalar color(0,0,255);//字体颜色
+            putText(src,text,point, FONT_HERSHEY_COMPLEX,2,color,2);
         }
 
     }
@@ -235,33 +273,13 @@ void lightDetector(Mat src,Mat treat_img)
 
 
 
-/**
- * 函数名：  lightDetector
- * 参数：   Mat img，要展示的图像
- *         string 窗口名
- * 返回值： 无
- * 功能：   在指定窗口展示照片
- */
-
-void img_show(Mat img, string windowName)
-{
-    // [1] 新建一个窗口
-    namedWindow(windowName, WINDOW_NORMAL);
-    // [2] 调整窗口大小
-    resizeWindow(windowName, Size(img.cols / 2, img.rows / 2));
-    // [3] 展示照片
-    imshow(windowName, img);
-
-    return;
-}
-
-
 
 
 int main()
 {
     // 1.读取图片
     Mat hero = imread("D:\\Picture\\armour.JPG");
+    img_show(hero,"1-原图");
 
     // 2.对图片进行预处理
     Mat pretreat_img = pretreat(hero);
@@ -270,8 +288,7 @@ int main()
     lightDetector(hero,pretreat_img);
 
     // 3.展示照片
-    img_show(hero, "hero");
-    img_show(pretreat_img,"pretreat");
+    img_show(hero, "灯柱");
 
     // 4.等待按键操作
     waitKey(0);
