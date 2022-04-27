@@ -1,5 +1,5 @@
 ##############################################################
-# File Name:  	  problem3-2-2.sh
+# File Name:  	  problem3-2-3.sh
 # Version:	  V1.0
 # Author:      	  Zhangmin
 # Created Time :  2022-04-25 
@@ -8,11 +8,13 @@
 
 #!/bin/bash
 words="I am oldboy teacher welcome to oldboy training class."
-word_6=`echo $words | sed 's#\.##g'`
+
+# 遍历这个字符串
 for i in $word_6
 do
- if [ ${#i} -lt 7 ]; then
-   echo $i
+ if [ ${#i} -lt 7 ]; #字符数小于7
+ then
+   echo $i  # 输出
  fi
 done
 
