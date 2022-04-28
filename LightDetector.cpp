@@ -2,7 +2,7 @@
  * @file      LightDetector.cpp
  * @author    zhangmin(3273749257@qq.com)
  * @brief     灯柱检测并配对
- * @version   0.4
+ * @version   0.5
  * @date      2022-04-27
  * @copyright Copyright (c) 2022
  */
@@ -22,59 +22,14 @@ const int WIDTH_GREATER_THAN_HEIGHT = 0;
 
 
 // 为辅助筛选装甲板，提高算法运行速度，做一次筛选预处理
-RotatedRect& adjustRec(cv::RotatedRect& rec, const int mode)
-   {
-       using std::swap;
-
-       float& width = rec.size.width;
-       float& height = rec.size.height;
-       float& angle = rec.angle;
-
-       if (mode == WIDTH_GREATER_THAN_HEIGHT)
-       {
-           if (width < height)
-           {
-               swap(width, height);
-               angle += 90.0;
-           }
-       }
-
-       while (angle >= 90.0) angle -= 180.0;
-       while (angle < -90.0) angle += 180.0;
-
-       if (mode == ANGLE_TO_UP)
-       {
-           if (angle >= 45.0)
-           {
-               swap(width, height);
-               angle -= 90.0;
-           }
-           else if (angle < -45.0)
-           {
-               swap(width, height);
-               angle += 90.0;
-           }
-       }
-   return rec;
-}//由于灯条是竖着的，借此纠正不是竖着的轮廓，方便算法查找
+RotatedRect& adjustRec(cv::RotatedRect& rec, const int mode);
 
 
 #define DELAT_MAX 30//定义限幅滤波误差最大值
 typedef	int filter_type;//定义限幅滤波数据类型
+
 //为了防止有其他装甲板的干扰，加入限幅滤波
-filter_type filter(filter_type effective_value, filter_type new_value, filter_type delat_max)
-{
-    if ( ( new_value - effective_value > delat_max ) || ( effective_value - new_value > delat_max ))
-    {
-        new_value=effective_value;
-        return effective_value;
-    }
-    else
-    {
-        new_value=effective_value;
-        return new_value;
-    }
-}
+filter_type filter(filter_type effective_value, filter_type new_value, filter_type delat_max);
 
 
 /**
@@ -178,7 +133,7 @@ void lightDetector(Mat src,Mat treat_img)
         // [2-2-1] 得到灯柱面积
         float Contour_Area = contourArea(contours[i]);
         // [2-2-2] 去除较小轮廓
-        if (Contour_Area < 15 || contours[i].size() <= 10)//15、10
+        if (Contour_Area < 15 || contours[i].size() <= 10)
             continue;
 
         // [2-3] 根据长宽比筛选灯柱
@@ -189,7 +144,7 @@ void lightDetector(Mat src,Mat treat_img)
         if (Light_Rec.angle > 10 )
             continue;
         // [2-3-3] 长宽比和轮廓面积比限制
-        if (Light_Rec.size.width / Light_Rec.size.height > 1.5 || Contour_Area / Light_Rec.size.area() < 0.5)//1.5、0.5
+        if (Light_Rec.size.width / Light_Rec.size.height > 1.5 || Contour_Area / Light_Rec.size.area() < 0.5)
             continue;
 
         // [2-4] 扩大灯柱的面积
@@ -262,8 +217,8 @@ void lightDetector(Mat src,Mat treat_img)
             string center_y=to_string(ARMOR.center.y);
             string text="("+center_x+","+center_y+")";//坐标
             Point point;//文字位置
-            point.x=src.cols/2;
-            point.y=src.rows/2;
+            point.x=ARMOR.center.x;
+            point.y=ARMOR.center.y;
             Scalar color(0,0,255);//字体颜色
             putText(src,text,point, FONT_HERSHEY_COMPLEX,1,color,1);
         }
@@ -298,3 +253,62 @@ int main()
     return 0;
 }
 
+
+/*
+* 功能：为辅助筛选装甲板，提高算法运行速度，做一次筛选预处理
+* 说明：由于灯条是竖着的，借此纠正不是竖着的轮廓，方便算法查找
+*/
+RotatedRect& adjustRec(cv::RotatedRect& rec, const int mode)
+   {
+       using std::swap;
+
+       float& width = rec.size.width;
+       float& height = rec.size.height;
+       float& angle = rec.angle;
+
+       if (mode == WIDTH_GREATER_THAN_HEIGHT)
+       {
+           if (width < height)
+           {
+               swap(width, height);
+               angle += 90.0;
+           }
+       }
+
+       while (angle >= 90.0) angle -= 180.0;
+       while (angle < -90.0) angle += 180.0;
+
+       if (mode == ANGLE_TO_UP)
+       {
+           if (angle >= 45.0)
+           {
+               swap(width, height);
+               angle -= 90.0;
+           }
+           else if (angle < -45.0)
+           {
+               swap(width, height);
+               angle += 90.0;
+           }
+       }
+   return rec;
+}
+
+
+
+/*
+* 功能：为了防止有其他装甲板的干扰，加入限幅滤波
+*/
+filter_type filter(filter_type effective_value, filter_type new_value, filter_type delat_max)
+{
+    if ( ( new_value - effective_value > delat_max ) || ( effective_value - new_value > delat_max ))
+    {
+        new_value=effective_value;
+        return effective_value;
+    }
+    else
+    {
+        new_value=effective_value;
+        return new_value;
+    }
+}
