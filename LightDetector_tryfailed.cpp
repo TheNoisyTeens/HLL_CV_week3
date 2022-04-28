@@ -1,80 +1,27 @@
-﻿/**
- * @file      LightDetector.cpp
- * @author    zhangmin(3273749257@qq.com)
- * @brief     灯柱检测并配对
- * @version   0.4
- * @date      2022-04-27
- * @copyright Copyright (c) 2022
- */
-
-
-
+﻿/*
+第四步：尝试漫水算法，学习参数设置
+*/
 #include<iostream>
 #include<opencv2/opencv.hpp>
 
 using namespace cv;
 using namespace std;
 
-
-
 const int ANGLE_TO_UP = 1;
 const int WIDTH_GREATER_THAN_HEIGHT = 0;
 
 
-// 为辅助筛选装甲板，提高算法运行速度，做一次筛选预处理
-RotatedRect& adjustRec(cv::RotatedRect& rec, const int mode)
-   {
-       using std::swap;
-
-       float& width = rec.size.width;
-       float& height = rec.size.height;
-       float& angle = rec.angle;
-
-       if (mode == WIDTH_GREATER_THAN_HEIGHT)
-       {
-           if (width < height)
-           {
-               swap(width, height);
-               angle += 90.0;
-           }
-       }
-
-       while (angle >= 90.0) angle -= 180.0;
-       while (angle < -90.0) angle += 180.0;
-
-       if (mode == ANGLE_TO_UP)
-       {
-           if (angle >= 45.0)
-           {
-               swap(width, height);
-               angle -= 90.0;
-           }
-           else if (angle < -45.0)
-           {
-               swap(width, height);
-               angle += 90.0;
-           }
-       }
-   return rec;
-}//由于灯条是竖着的，借此纠正不是竖着的轮廓，方便算法查找
-
-
 #define DELAT_MAX 30//定义限幅滤波误差最大值
 typedef	int filter_type;//定义限幅滤波数据类型
+
 //为了防止有其他装甲板的干扰，加入限幅滤波
-filter_type filter(filter_type effective_value, filter_type new_value, filter_type delat_max)
-{
-    if ( ( new_value - effective_value > delat_max ) || ( effective_value - new_value > delat_max ))
-    {
-        new_value=effective_value;
-        return effective_value;
-    }
-    else
-    {
-        new_value=effective_value;
-        return new_value;
-    }
-}
+filter_type filter(filter_type effective_value, filter_type new_value, filter_type delat_max);
+
+
+
+// 为辅助筛选装甲板，提高算法运行速度，做一次筛选预处理
+RotatedRect& adjustRec(cv::RotatedRect& rec, const int mode);
+
 
 
 /**
@@ -274,27 +221,171 @@ void lightDetector(Mat src,Mat treat_img)
 
 
 
+// 曝光度调节函数
+Mat exposureCtr(Mat src);
 
+//得到蓝色通道
+Mat getBlue(Mat src);
 
 
 int main()
 {
-    // 1.读取图片
-    Mat hero = imread("D:\\Picture\\armour.JPG");
-    img_show(hero,"1-原图");
+    // 1.读入图像，判断读入是否成功
+    Mat src = imread("D:\\Picture\\armour.jpg");
+//    Mat src_test= imread("D:\\Picture\\armour.jpg");
+    if (src.empty())
+    {
+        cout << "can't read this image!" << endl;
+        return 0;
+    }
 
-    // 2.对图片进行预处理
-    Mat pretreat_img = pretreat(hero);
 
-    // 3.灯条寻找，并绘制中心点
-    lightDetector(hero,pretreat_img);
+    //2.降低曝光
+    Mat expo_low_dst=exposureCtr(src);
+    img_show(expo_low_dst,"1-降低曝光");
 
-    // 3.展示照片
-    img_show(hero, "灯柱");
+    //3.提取蓝色通道(为灰度图)
+    Mat grayImg=getBlue(expo_low_dst);
+    img_show(grayImg,"2-提取蓝色通道");
 
-    // 4.等待按键操作
+
+    //4.漫水算法
+    Rect ccomp;
+    ccomp.width=80;
+    ccomp.height=80;
+    floodFill(grayImg, Point(50,300), Scalar(255, 255,255), &ccomp, Scalar(13, 13, 13),Scalar(13, 13, 13));
+    img_show(grayImg,"3-漫水算法");
+//    lightDetector(src_test,grayImg);
+
+    //5.漫水算法后的二值图
+    threshold(grayImg,grayImg,110,255,THRESH_BINARY);
+    Mat element1 = getStructuringElement(MORPH_RECT, Size(8, 8)); //创建一个用于膨胀的图形
+    //6.对漫水算法后的图进行膨胀
+    dilate(grayImg, grayImg, element1);
+    //7.反转颜色（黑->白，白->黑）
+    for(int i=0;i<grayImg.rows;i++)
+        for(int j=0;j<grayImg.cols;j++)
+            if(grayImg.at<uchar>(i,j)==0)
+                grayImg.at<uchar>(i,j)=255;
+            else
+                grayImg.at<uchar>(i,j)=0;
+    img_show(grayImg,"4-漫水算法-反转");
+
+    //8.边缘检测
+    Mat canny;
+    Canny(grayImg,canny,110,200);
+    img_show(canny,"5-边缘检测");
+    //9.对边缘检测后的图进行膨胀处理，使轮廓明显
+    Mat element2 = getStructuringElement(MORPH_RECT, Size(200, 200)); //创建一个用于膨胀的图形
+    dilate(canny, canny, element1);
+    img_show(canny,"6-边缘检测反转");
+    lightDetector(src,canny);
+
+    //显示原图
+    img_show(src,"原图");
+//    img_show(src_test,"原图test---4-漫水算法-反转");
+
+
+
     waitKey(0);
-
-    return 0;
+    system("pause");
+    return EXIT_SUCCESS;
 }
 
+
+/*
+* 功能：为辅助筛选装甲板，提高算法运行速度，做一次筛选预处理
+* 说明：由于灯条是竖着的，借此纠正不是竖着的轮廓，方便算法查找
+*/
+RotatedRect& adjustRec(cv::RotatedRect& rec, const int mode)
+   {
+       using std::swap;
+
+       float& width = rec.size.width;
+       float& height = rec.size.height;
+       float& angle = rec.angle;
+
+       if (mode == WIDTH_GREATER_THAN_HEIGHT)
+       {
+           if (width < height)
+           {
+               swap(width, height);
+               angle += 90.0;
+           }
+       }
+
+       while (angle >= 90.0) angle -= 180.0;
+       while (angle < -90.0) angle += 180.0;
+
+       if (mode == ANGLE_TO_UP)
+       {
+           if (angle >= 45.0)
+           {
+               swap(width, height);
+               angle -= 90.0;
+           }
+           else if (angle < -45.0)
+           {
+               swap(width, height);
+               angle += 90.0;
+           }
+       }
+   return rec;
+}
+
+
+/*
+* 功能：为了防止有其他装甲板的干扰，加入限幅滤波
+*/
+filter_type filter(filter_type effective_value, filter_type new_value, filter_type delat_max)
+{
+    if ( ( new_value - effective_value > delat_max ) || ( effective_value - new_value > delat_max ))
+    {
+        new_value=effective_value;
+        return effective_value;
+    }
+    else
+    {
+        new_value=effective_value;
+        return new_value;
+    }
+}
+
+
+
+/*
+* 功能：曝光度调节函数
+*/
+Mat exposureCtr(Mat src)
+{
+    Mat   dst;
+    double gama = 1.0;
+
+    // 提示并输入 γ 的值
+    cout << "* Enter the gama value [-1,1]: ";
+    cin >> gama;
+    // 构建查找表
+    Mat lookUpTable(1, 256, CV_8U);
+    uchar* p = lookUpTable.ptr();
+    for (int i = 0; i < 256; ++i)
+        p[i] = saturate_cast<uchar>(pow(i / 255.0, gama) * 255.0);
+
+   // 使用查找表进行对比度亮度调整
+    LUT(src, lookUpTable, dst);
+
+    return dst;
+}
+
+
+/*
+* 功能：得到蓝色通道
+*/
+Mat getBlue(Mat src)
+{
+    vector <Mat> channels;
+    split(src,channels);//分离色彩通道
+    //预处理删除己方装甲板颜色
+    Mat dst=channels.at(0)-channels.at(2)-channels.at(1);//Get blue-red image;
+
+    return dst;
+}
